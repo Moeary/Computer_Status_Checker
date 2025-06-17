@@ -1,12 +1,17 @@
 <template>
   <div class="checker-container">
     <canvas ref="bgCanvas" class="bg-canvas"></canvas>
-    <div class="main-content">
+    <div class="main-content" :data-device-type="currentDeviceInfo.type">
       <el-icon class="pc-icon" size="48" color="#409EFF">
-        <Monitor />
+        <Monitor v-if="currentDeviceInfo.type === 'desktop'" />
+        <Iphone v-else-if="currentDeviceInfo.type === 'mobile'" />
+        <Notebook v-else />
       </el-icon>
-      <h1 class="title">电脑开机状态检测器</h1>
-      <p class="desc">使用先进的大数据技术分析您的电脑状态</p>
+      <h1 class="title">{{ texts.title }}</h1>
+      <p class="desc">{{ texts.description }}</p>
+      <div class="device-info">
+        <small>检测到设备: {{ currentDeviceInfo.os }}</small>
+      </div>
       <el-button
         class="detect-btn"
         type="primary"
@@ -21,24 +26,122 @@
       <transition name="fade">
         <div v-if="showResult" class="result-box">
           <el-icon color="#67C23A" size="32"><CircleCheckFilled /></el-icon>
-          <span class="result-text">恭喜你， 你的电脑当前为开机状态！</span>
+          <span class="result-text">{{ texts.result }}</span>
         </div>
       </transition>
       <footer class="footer">
-        © 2025 电脑健康检测中心 | 使用先进的大数据技术
+        {{ texts.footer }}
       </footer>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { Monitor, CircleCheckFilled } from '@element-plus/icons-vue'
+import { ref, onMounted, computed } from 'vue'
+import { Monitor, CircleCheckFilled, Iphone, Notebook } from '@element-plus/icons-vue'
 import gsap from 'gsap'
 
 const loading = ref(false)
 const showResult = ref(false)
 const bgCanvas = ref(null)
+
+// 设备检测函数
+const detectDevice = () => {
+  const userAgent = navigator.userAgent.toLowerCase()
+  const platform = navigator.platform.toLowerCase()
+  const maxTouchPoints = navigator.maxTouchPoints || 0
+  
+  // 更精确的移动设备检测
+  if (/android/.test(userAgent)) {
+    const isTablet = /tablet/.test(userAgent) || (maxTouchPoints > 1 && !/mobile/.test(userAgent))
+    return { 
+      type: isTablet ? 'tablet' : 'mobile', 
+      os: 'Android', 
+      device: isTablet ? '平板' : '手机' 
+    }
+  }
+  
+  if (/iphone|ipod/.test(userAgent)) {
+    return { type: 'mobile', os: 'iOS', device: '手机' }
+  }
+  
+  if (/ipad/.test(userAgent) || (navigator.platform === 'MacIntel' && maxTouchPoints > 1)) {
+    return { type: 'tablet', os: 'iPadOS', device: '平板' }
+  }
+  
+  // 检测桌面系统
+  if (/mac/.test(platform) || /darwin/.test(userAgent)) {
+    return { type: 'desktop', os: 'macOS', device: '电脑' }
+  }
+  
+  if (/win/.test(platform)) {
+    // 检测Windows版本
+    let winVersion = 'Windows'
+    if (/windows nt 10.0/.test(userAgent)) winVersion = 'Windows 10/11'
+    else if (/windows nt 6.3/.test(userAgent)) winVersion = 'Windows 8.1'
+    else if (/windows nt 6.2/.test(userAgent)) winVersion = 'Windows 8'
+    else if (/windows nt 6.1/.test(userAgent)) winVersion = 'Windows 7'
+    
+    return { type: 'desktop', os: winVersion, device: '电脑' }
+  }
+  
+  if (/linux/.test(platform) && !/android/.test(userAgent)) {
+    // 检测Linux发行版
+    let linuxDistro = 'Linux'
+    if (/ubuntu/.test(userAgent)) linuxDistro = 'Ubuntu'
+    else if (/debian/.test(userAgent)) linuxDistro = 'Debian'
+    else if (/fedora/.test(userAgent)) linuxDistro = 'Fedora'
+    else if (/centos/.test(userAgent)) linuxDistro = 'CentOS'
+    
+    return { type: 'desktop', os: linuxDistro, device: '电脑' }
+  }
+  
+  // Chrome OS检测
+  if (/cros/.test(userAgent)) {
+    return { type: 'desktop', os: 'Chrome OS', device: '电脑' }
+  }
+  
+  // 其他移动设备检测
+  if (/mobile|tablet|touch|phone/.test(userAgent) || maxTouchPoints > 0) {
+    return { type: 'mobile', os: '移动设备', device: '手机' }
+  }
+  
+  // 默认为电脑
+  return { type: 'desktop', os: '未知系统', device: '电脑' }
+}
+
+// 获取设备信息
+const deviceInfo = detectDevice()
+
+// 开发调试：手动设备切换（仅开发环境）
+const debugMode = ref(false)
+const manualDevice = ref(null)
+
+// 切换调试模式
+const toggleDebugMode = () => {
+  debugMode.value = !debugMode.value
+}
+
+// 手动设置设备类型
+const setManualDevice = (type, os, device) => {
+  manualDevice.value = { type, os, device }
+}
+
+// 实际使用的设备信息（支持手动覆盖）
+const currentDeviceInfo = computed(() => {
+  return manualDevice.value || deviceInfo
+})
+
+// 动态文本计算
+const texts = computed(() => {
+  const device = currentDeviceInfo.value.device
+  return {
+    title: `${device}开机状态检测器`,
+    description: `使用先进的大数据技术分析您的${device}状态`,
+    result: `恭喜你，你的${device}当前为开机状态！`,
+    footer: `© 2025 ${device}健康检测中心 | 使用先进的大数据技术`
+  }
+})
 
 const startDetect = () => {
   loading.value = true
@@ -46,6 +149,10 @@ const startDetect = () => {
   
   // 强化动效：按钮震动+发光
   gsap.to('.detect-btn', { scale: 1.1, yoyo: true, repeat: 5, duration: 0.1 })
+    // 显示检测过程信息
+  console.log(`🔍 正在检测${currentDeviceInfo.value.device}状态...`)
+  console.log(`📱 检测到设备类型: ${currentDeviceInfo.value.type}`)
+  console.log(`💻 操作系统: ${currentDeviceInfo.value.os}`)
   
   setTimeout(() => {
     loading.value = false
@@ -56,6 +163,9 @@ const startDetect = () => {
     )
     // 粒子爆发动画
     triggerParticles()
+    
+    // 成功日志
+    console.log(`✅ ${currentDeviceInfo.value.device}状态检测完成！`)
   }, 2200)
 }
 
@@ -235,6 +345,10 @@ onMounted(() => {
 .pc-icon {
   margin-bottom: 12px;
   animation: float 2.5s ease-in-out infinite;
+  transition: all 0.3s ease;
+}
+.pc-icon:hover {
+  transform: scale(1.1);
 }
 @keyframes float {
   0%, 100% { transform: translateY(0); }
@@ -311,6 +425,62 @@ onMounted(() => {
   color: #b3c0d1;
   font-size: 0.95rem;
   opacity: 0.7;
+}
+.device-info {
+  margin-bottom: 20px;
+  padding: 8px 16px;
+  background: rgba(64, 158, 255, 0.1);
+  border-radius: 12px;
+  border: 1px solid rgba(64, 158, 255, 0.2);
+}
+
+.device-info small {
+  color: #409EFF;
+  font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+/* 根据设备类型动态主题 */
+.device-mobile {
+  --primary-color: #00d4aa;
+  --secondary-color: #00b894;
+}
+
+.device-tablet {
+  --primary-color: #6c5ce7;
+  --secondary-color: #a29bfe;
+}
+
+.device-desktop {
+  --primary-color: #409EFF;
+  --secondary-color: #5dade2;
+}
+
+.main-content[data-device-type="mobile"] .detect-btn {
+  background: linear-gradient(45deg, #00d4aa, #00b894);
+}
+
+.main-content[data-device-type="tablet"] .detect-btn {
+  background: linear-gradient(45deg, #6c5ce7, #a29bfe);
+}
+
+.main-content[data-device-type="mobile"] .device-info {
+  background: rgba(0, 212, 170, 0.1);
+  border-color: rgba(0, 212, 170, 0.2);
+}
+
+.main-content[data-device-type="mobile"] .device-info small {
+  color: #00d4aa;
+}
+
+.main-content[data-device-type="tablet"] .device-info {
+  background: rgba(108, 92, 231, 0.1);
+  border-color: rgba(108, 92, 231, 0.2);
+}
+
+.main-content[data-device-type="tablet"] .device-info small {
+  color: #6c5ce7;
 }
 
 /* 扫描动画 */
